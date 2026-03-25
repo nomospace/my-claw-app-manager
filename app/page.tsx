@@ -90,13 +90,16 @@ export default function HomePage() {
       <header className="sticky top-0 z-10 border-b bg-white/80 backdrop-blur">
         <div className="mx-auto max-w-7xl px-4 py-4">
           <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-bold text-slate-900 sm:text-2xl">
-                🦞 Claw App Manager
-              </h1>
-              <p className="text-sm text-slate-500">
-                管理本地应用端口 3000-3009
-              </p>
+            <div className="flex items-center gap-3">
+              <img src="/logo.svg" alt="Logo" className="h-10 w-10" />
+              <div>
+                <h1 className="text-xl font-bold text-slate-900 sm:text-2xl">
+                  Claw App Manager
+                </h1>
+                <p className="text-sm text-slate-500">
+                  管理本地应用端口 3000-3009
+                </p>
+              </div>
             </div>
             <Button
               onClick={() => fetchApps(true)}
