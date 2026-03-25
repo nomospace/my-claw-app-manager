@@ -3,7 +3,7 @@ import './globals.css'
 
 export const metadata: Metadata = {
   title: 'Claw App Manager',
-  description: '管理本地应用端口 3000-3010',
+  description: '管理本地应用端口 3000-3009',
 }
 
 export const viewport: Viewport = {

@@ -52,7 +52,8 @@ async function scanPorts(start: number, end: number): Promise<AppStatus[]> {
   const appsConfig = getAppsConfig()
   const results: AppStatus[] = []
 
-  for (let port = start; port <= end; port++) {
+  // 扫描 3000-3009 端口
+  for (let port = 3000; port <= 3009; port++) {
     const isRunning = await checkPort(port)
     const config = appsConfig[port.toString()]
 
@@ -68,7 +69,7 @@ async function scanPorts(start: number, end: number): Promise<AppStatus[]> {
 
 export async function GET() {
   try {
-    const apps = await scanPorts(3000, 3010)
+    const apps = await scanPorts(3000, 3009)
     return NextResponse.json({ apps })
   } catch (error) {
     console.error('Scan ports error:', error)

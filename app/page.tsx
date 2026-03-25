@@ -95,7 +95,7 @@ export default function HomePage() {
                 🦞 Claw App Manager
               </h1>
               <p className="text-sm text-slate-500">
-                管理本地应用端口 3000-3010
+                管理本地应用端口 3000-3009
               </p>
             </div>
             <Button

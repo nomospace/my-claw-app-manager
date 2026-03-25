@@ -69,7 +69,7 @@ export async function POST(
 
     // 验证端口号
     const portNum = parseInt(port, 10)
-    if (isNaN(portNum) || portNum < 3000 || portNum > 3010) {
+    if (isNaN(portNum) || portNum < 3000 || portNum > 3009) {
       return NextResponse.json(
         { error: '无效的端口号' },
         { status: 400 }
