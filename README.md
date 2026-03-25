@@ -71,4 +71,4 @@ npm start
 
 ## License
 
-MIT
+MIT<!-- Updated: 2026-03-25 -->
