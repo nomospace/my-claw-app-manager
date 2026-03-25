@@ -4,6 +4,25 @@ import { promisify } from 'util'
 
 const execAsync = promisify(exec)
 
+interface AppConfig {
+  name?: string
+  startCmd?: string
+  nginxConfig?: string
+}
+
+// 从环境变量解析应用配置
+function getAppsConfig(): Record<string, AppConfig> {
+  try {
+    const config = process.env.APPS_CONFIG
+    if (config) {
+      return JSON.parse(config)
+    }
+  } catch (e) {
+    console.error('Failed to parse APPS_CONFIG:', e)
+  }
+  return {}
+}
+
 // 验证密码
 function verifyPassword(password: string): boolean {
   const envPassword = process.env.PASSWORD
@@ -15,38 +34,63 @@ function verifyPassword(password: string): boolean {
 }
 
 // 通过端口查找并杀死进程
-async function killProcessByPort(port: string): Promise<{ success: boolean; message: string }> {
+async function killProcessByPort(port: string): Promise<{ success: boolean; message: string; pids: string[] }> {
   try {
-    // 查找占用端口的进程 PID
-    const { stdout } = await execAsync(`lsof -ti:${port}`)
-    const pids = stdout.trim().split('\n').filter(Boolean)
-
-    if (pids.length === 0) {
-      return {
-        success: false,
-        message: `端口 ${port} 没有运行中的进程`,
-      }
-    }
-
-    // 杀死所有相关进程
-    for (const pid of pids) {
-      try {
-        await execAsync(`kill -9 ${pid}`)
-      } catch (e) {
-        console.error(`Failed to kill process ${pid}:`, e)
-      }
-    }
-
+    const { stdout } = await execAsync(`fuser -k ${port}/tcp 2>/dev/null || true`)
     return {
       success: true,
-      message: `已停止端口 ${port} 的 ${pids.length} 个进程`,
+      message: `已关闭端口 ${port} 的进程`,
+      pids: []
     }
   } catch (error) {
-    // lsof 没有找到进程时也会报错
     return {
-      success: false,
-      message: `端口 ${port} 没有运行中的进程`,
+      success: true,
+      message: `端口 ${port} 无运行进程`,
+      pids: []
     }
+  }
+}
+
+// 禁用 Nginx 配置（关闭对外端口）
+async function disableNginxConfig(configName: string): Promise<{ success: boolean; message: string }> {
+  if (!configName) {
+    return { success: true, message: '无 Nginx 配置' }
+  }
+
+  try {
+    // 检查配置文件是否存在
+    const confPath = `/etc/nginx/conf.d/${configName}.conf`
+    const disabledPath = `/etc/nginx/conf.d/${configName}.conf.disabled`
+    
+    // 如果配置存在且未禁用，则禁用
+    await execAsync(`sudo test -f ${confPath} && sudo mv ${confPath} ${disabledPath} || true`)
+    await execAsync(`sudo systemctl reload nginx`)
+    
+    return { success: true, message: `已关闭外网端口` }
+  } catch (error) {
+    console.error('Disable nginx error:', error)
+    return { success: false, message: `关闭外网端口失败: ${error}` }
+  }
+}
+
+// 启用 Nginx 配置（开启对外端口）
+async function enableNginxConfig(configName: string): Promise<{ success: boolean; message: string }> {
+  if (!configName) {
+    return { success: true, message: '无 Nginx 配置' }
+  }
+
+  try {
+    const confPath = `/etc/nginx/conf.d/${configName}.conf`
+    const disabledPath = `/etc/nginx/conf.d/${configName}.conf.disabled`
+    
+    // 如果配置被禁用，则启用
+    await execAsync(`sudo test -f ${disabledPath} && sudo mv ${disabledPath} ${confPath} || true`)
+    await execAsync(`sudo systemctl reload nginx`)
+    
+    return { success: true, message: `已开启外网端口` }
+  } catch (error) {
+    console.error('Enable nginx error:', error)
+    return { success: false, message: `开启外网端口失败: ${error}` }
   }
 }
 
@@ -76,20 +120,28 @@ export async function POST(
       )
     }
 
-    const result = await killProcessByPort(port)
+    // 获取应用配置
+    const appsConfig = getAppsConfig()
+    const appConfig = appsConfig[port]
 
-    if (result.success) {
-      return NextResponse.json({
-        success: true,
-        message: result.message,
-        port: portNum,
-      })
-    } else {
-      return NextResponse.json(
-        { error: result.message },
-        { status: 400 }
-      )
+    // 关闭本地进程
+    const killResult = await killProcessByPort(port)
+    
+    // 关闭 Nginx 对外端口
+    const nginxResult = await disableNginxConfig(appConfig?.nginxConfig || '')
+
+    const messages = [killResult.message]
+    if (nginxResult.message) {
+      messages.push(nginxResult.message)
     }
+
+    return NextResponse.json({
+      success: true,
+      message: messages.join('；'),
+      port: portNum,
+      killResult,
+      nginxResult
+    })
   } catch (error) {
     console.error('Stop app error:', error)
     return NextResponse.json(

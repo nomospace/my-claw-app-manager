@@ -7,6 +7,7 @@ const execAsync = promisify(exec)
 interface AppConfig {
   name?: string
   startCmd?: string
+  nginxConfig?: string
 }
 
 // 从环境变量解析应用配置
@@ -32,13 +33,30 @@ function verifyPassword(password: string): boolean {
   return password === envPassword
 }
 
-// 启动应用
-async function startApp(port: string): Promise<{ success: boolean; message: string }> {
-  const appsConfig = getAppsConfig()
-  const config = appsConfig[port]
+// 启用 Nginx 配置（开启对外端口）
+async function enableNginxConfig(configName: string): Promise<{ success: boolean; message: string }> {
+  if (!configName) {
+    return { success: true, message: '无 Nginx 配置' }
+  }
 
+  try {
+    const confPath = `/etc/nginx/conf.d/${configName}.conf`
+    const disabledPath = `/etc/nginx/conf.d/${configName}.conf.disabled`
+    
+    // 如果配置被禁用，则启用
+    await execAsync(`sudo test -f ${disabledPath} && sudo mv ${disabledPath} ${confPath} || true`)
+    await execAsync(`sudo systemctl reload nginx`)
+    
+    return { success: true, message: `已开启外网端口` }
+  } catch (error) {
+    console.error('Enable nginx error:', error)
+    return { success: false, message: `开启外网端口失败: ${error}` }
+  }
+}
+
+// 启动应用
+async function startApp(port: string, config: AppConfig): Promise<{ success: boolean; message: string }> {
   if (!config?.startCmd) {
-    // 尝试默认启动方式
     return {
       success: false,
       message: `端口 ${port} 未配置启动命令`,
@@ -47,14 +65,14 @@ async function startApp(port: string): Promise<{ success: boolean; message: stri
 
   try {
     // 后台启动
-    await execAsync(`nohup ${config.startCmd} > /dev/null 2>&1 &`)
+    await execAsync(`nohup ${config.startCmd} > /tmp/app-${port}.log 2>&1 &`)
     
     // 等待一下让进程启动
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    await new Promise(resolve => setTimeout(resolve, 1500))
     
     return {
       success: true,
-      message: `已执行启动命令: ${config.startCmd}`,
+      message: `已执行启动命令`,
     }
   } catch (error) {
     console.error('Start app error:', error)
@@ -91,17 +109,38 @@ export async function POST(
       )
     }
 
-    const result = await startApp(port)
+    // 获取应用配置
+    const appsConfig = getAppsConfig()
+    const appConfig = appsConfig[port]
 
-    if (result.success) {
+    if (!appConfig?.startCmd) {
+      return NextResponse.json(
+        { error: `端口 ${port} 未配置启动命令` },
+        { status: 400 }
+      )
+    }
+
+    // 启用 Nginx 对外端口
+    const nginxResult = await enableNginxConfig(appConfig.nginxConfig || '')
+
+    // 启动本地应用
+    const startResult = await startApp(port, appConfig)
+
+    const messages = []
+    if (nginxResult.message) messages.push(nginxResult.message)
+    if (startResult.message) messages.push(startResult.message)
+
+    if (startResult.success) {
       return NextResponse.json({
         success: true,
-        message: result.message,
+        message: messages.join('；'),
         port: portNum,
+        nginxResult,
+        startResult
       })
     } else {
       return NextResponse.json(
-        { error: result.message },
+        { error: startResult.message },
         { status: 400 }
       )
     }
